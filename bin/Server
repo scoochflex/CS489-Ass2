@@ -1,0 +1,9 @@
+module Assignment2{
+	module P2P{
+		interface server{
+			boolean getFileLocation(in long fid, out string path, out string clientAddress);
+			void registerFile(in string filename, in string path, in string clientAddress);
+			boolean unRegisterFile(in long fid);		
+		};
+	};
+};
