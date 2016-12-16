@@ -2,6 +2,8 @@ package Assignment2.P2P;
 import org.omg.CosNaming.*;
 import org.omg.CosNaming.NamingContextPackage.*;
 import org.omg.PortableServer.ServantLocatorPackage.*;
+
+
 import org.omg.CORBA.*;
 import org.omg.PortableServer.*;
 import org.omg.PortableServer.POA;
@@ -21,11 +23,11 @@ import java.util.Properties;
 
 
 class ServerImpl extends serverPOA{
-	DBConnectionManager dBaseMan;
+	DBConnectionManager dBaseMan = new DBConnectionManager();
 	private ORB orb;
 	
 	//Open connection to dbase on orb registration
-	public void setORB(ORB orb_val) {
+	public void ServerImpl(ORB orb_val) {
 	    orb = orb_val;
 	    dBaseMan = new DBConnectionManager();
 	}
@@ -44,10 +46,10 @@ class ServerImpl extends serverPOA{
 	}
 
 	@Override
-	public void registerFile(String filename, String path, String clientAddress) {
+	public void registerFile(String filename, String path, String clientAddress, long size) {
 		// TODO Auto-generated method stub
 		//return fid if successful
-		dBaseMan.registerFile(filename, path, clientAddress);
+		dBaseMan.registerFile(filename, path, clientAddress, size);
 		System.out.println("Registered file: " + filename);
 	}
 
@@ -55,19 +57,115 @@ class ServerImpl extends serverPOA{
 	public boolean unRegisterFile(int fid) {
 		return dBaseMan.unRegisterFile(fid);	
 	}
+
+	@Override
+	public fileInfo[] getAllSharedFiles() {
+		fileInfo[] results = dBaseMan.getAllAvailableFiles();
+		if(results==null){
+			results = new fileInfo[0];
+		}
+		return results;
+	}
+
+	@Override
+	public fileInfo[] searchFilesByName(String filename) {
+		fileInfo[] results = dBaseMan.searchForFile(filename);
+		if(results==null){
+			results = new fileInfo[0];
+		}
+		return results;		
+	}
 	
+	@Override
+	public fileInfo[] searchFilesByAddress(String address) {
+		fileInfo[] results = dBaseMan.searchFilesAddress(address);
+		if(results==null){
+			results = new fileInfo[0];
+		}
+		return results;		
+	}
+	
+}
+
+class PoaServantLocator extends LocalObject implements ServantLocator {
+    public Servant preinvoke(byte[] oid, POA adapter,
+                             String operation,
+                             CookieHolder the_cookie) throws ForwardRequest {
+        try {
+        	ServerImpl servantObj = new ServerImpl();
+            System.out.println("PoaServantLocator.preinvoke(): Created \"" +
+                               servantObj.getClass().getName() + "\" " +
+                               "servant object for \"" + adapter.the_name() +
+                               "\"");
+            return servantObj;
+        } catch (Exception e) {
+            System.err.println("preinvoke: Caught exception - " + e);
+        }
+        return null;
+    }
+
+    public void postinvoke(byte[] oid, POA adapter,
+                           String operation,
+                           java.lang.Object the_cookie,
+                           Servant the_servant) {
+        try {
+            System.out.println("PoaServantLocator.postinvoke(): For \"" +
+                               adapter.the_name() + "\" adapter of servant " +
+                               "object type \"" +
+                               the_servant.getClass().getName() + "\"");
+        } catch (Exception e) {
+            System.err.println("postinvoke: Caught exception - " + e);
+        }
+    }
 }
 
 public class ServerApp {
 	  public static void main(String args[]) {
 		    try{
 		      // create and initialize the ORB
-		      ORB orb = ORB.init(args, null);
+		      ORB orb = ORB.init(args, System.getProperties());
 
 		      // get reference to rootpoa & activate the POAManager
-		      POA rootpoa = POAHelper.narrow(orb.resolve_initial_references("RootPOA"));
-		      rootpoa.the_POAManager().activate();
+		      POA rootPoa = POAHelper.narrow(orb.resolve_initial_references("RootPOA"));
+		      rootPoa.the_POAManager().activate();
 
+		      Policy poaPolicy[] = new Policy[2];
+	            poaPolicy[0] = rootPoa.create_servant_retention_policy(
+	                ServantRetentionPolicyValue.NON_RETAIN);
+	            poaPolicy[1] = rootPoa.create_request_processing_policy(
+	                RequestProcessingPolicyValue.USE_SERVANT_MANAGER);
+	            System.out.println("Server: Set POA policy as NON_RETAIN and " +
+	                               "USE_SERVANT_MANAGER");
+
+	            POA poa1 = rootPoa.create_POA("HelloPoa", null, poaPolicy);
+	            poa1.the_POAManager().activate();
+	            System.out.println("Server: Created and activated child POA " +
+	                               "\"" + poa1.the_name() + "\"");
+
+	            poa1.set_servant_manager(new PoaServantLocator());
+	            System.out.println("Server: Associated the servant manager of " +
+	                               "type servant locator with \"" + 
+	                               poa1.the_name() + "\"");
+
+	            // This create_reference operation does not cause an activation, 
+	            // the resulting object reference will be exported and passed to 
+	            // client, so that subsequent requests on the reference will cause
+	            // the appropriate servant manager to be invoked
+	            org.omg.CORBA.Object objectRef = poa1.create_reference(
+	                serverHelper.id());
+	            System.out.println("Server: Created a CORBA object reference " +
+	                               "from id \"" + serverHelper.id() + "\""); 
+
+	            NamingContext rootContext = NamingContextHelper.narrow(
+	                orb.resolve_initial_references("NameService"));
+	            NameComponent name[] = {new NameComponent("Server", "")};
+	            rootContext.rebind(name, objectRef);
+	            System.out.println("Server: Exported the CORBA object reference " +
+	                               "to NameService");
+
+	            System.out.println("Server: Ready and waiting for requests ...");
+	            orb.run();
+	          /*  
 		      // create servant and register it with the ORB
 		      ServerImpl helloImpl = new ServerImpl();
 		      helloImpl.setORB(orb); 
@@ -85,7 +183,7 @@ public class ServerApp {
 		      NamingContextExt ncRef = NamingContextExtHelper.narrow(objRef);
 
 		      // bind the Object Reference in Naming
-		      String name = "Hello";
+		      String name = "server";
 		      NameComponent path[] = ncRef.to_name( name );
 		      ncRef.rebind(path, href);
 
@@ -93,6 +191,7 @@ public class ServerApp {
 
 		      // wait for invocations from clients
 		      orb.run();
+		      */
 		    } 
 		        
 		      catch (Exception e) {
@@ -106,7 +205,6 @@ public class ServerApp {
 
 class DBConnectionManager {
     Connection dbConnection;    // The connection to the database
-
 
     public DBConnectionManager() {
     	// Make the database connection
@@ -123,19 +221,48 @@ class DBConnectionManager {
 		}
     }
     
-    //Search for the file specified by the filename entered and return a <filename, fid> list
-    public List<Pair<String, Integer>> searchForFile(String filename){
-    	List<Pair<String, Integer>> res = new ArrayList<Pair<String, Integer>>();
+    public fileInfo[] searchFilesAddress(String address) {    	
+    	fileInfo[] res = null;
+    	List<fileInfo> tmpArray = new ArrayList<fileInfo>();
     	Statement query;
 		ResultSet results;
 		boolean rowFound = false;
     	try {
     		query = dbConnection.createStatement();
-			results = query.executeQuery("SELECT * from `available_files` WHERE `filename`='" + filename + "'");
+			results = query.executeQuery("SELECT * from `available_files` WHERE `address`='" + address + "'");
 			rowFound = results.next();	    	
 	    	while(rowFound){
-	    		res.add(new Pair<String, Integer>(results.getString(1),results.getInt(0)));
+	    		tmpArray.add(new fileInfo(results.getInt(1),results.getString(2),results.getString(3),results.getString(4), results.getLong(5)));
 	    		rowFound = results.next();
+	    	}
+	    	if(!tmpArray.isEmpty()){
+	    		res = new fileInfo[tmpArray.size()];
+	    		tmpArray.toArray(res);
+	    	}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+    	return res;
+	}
+
+	//Search for the file specified by the filename entered and return a <filename, fid> list
+    public fileInfo[] searchForFile(String filename){
+    	fileInfo[] res = null;
+    	List<fileInfo> tmpArray = new ArrayList<fileInfo>();
+    	Statement query;
+		ResultSet results;
+		boolean rowFound = false;
+    	try {
+    		query = dbConnection.createStatement();
+			results = query.executeQuery("SELECT * from `available_files` WHERE `name`='" + filename + "'");
+			rowFound = results.next();	    	
+	    	while(rowFound){
+	    		tmpArray.add(new fileInfo(results.getInt(1),results.getString(2),results.getString(3),results.getString(4), results.getLong(5)));
+	    		rowFound = results.next();
+	    	}
+	    	if(!tmpArray.isEmpty()){
+	    		res = new fileInfo[tmpArray.size()];
+	    		tmpArray.toArray(res);
 	    	}
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -145,8 +272,9 @@ class DBConnectionManager {
     }
     
     //Search for all files and return a <filename, fid> list
-    public List<Pair<String, Integer>> getAllAvailableFiles(){
-    	List<Pair<String, Integer>> res = new ArrayList<Pair<String, Integer>>();
+    public fileInfo[] getAllAvailableFiles(){
+    	fileInfo[] res = null;
+    	List<fileInfo> tmpArray = new ArrayList<fileInfo>();
     	Statement query;
 		ResultSet results;
 		boolean rowFound = false;
@@ -155,12 +283,15 @@ class DBConnectionManager {
 			results = query.executeQuery("SELECT * from `available_files`");
 			rowFound = results.next();	    	
 	    	while(rowFound){
-	    		res.add(new Pair<String, Integer>(results.getString(1),results.getInt(0)));
+	    		tmpArray.add(new fileInfo(results.getInt(1),results.getString(2),results.getString(3),results.getString(4), results.getLong(5)));
 	    		rowFound = results.next();
+	    	}
+	    	if(!tmpArray.isEmpty()){
+	    		res = new fileInfo[tmpArray.size()];
+	    		tmpArray.toArray(res);
 	    	}
 		} catch (SQLException e) {
 			e.printStackTrace();
-			res = null;
 		}
     	return res;
     }
@@ -183,13 +314,13 @@ class DBConnectionManager {
     }
     
     //Register a file from a client based on
-    public boolean registerFile(String filename, String filepath, String clientAddress) {
+    public boolean registerFile(String filename, String filepath, String clientAddress, long size) {
 		Statement query;
 		int results;
 		boolean res = false;
 		try {
 			query = dbConnection.createStatement();
-			results = query.executeUpdate("INSERT INTO `available_files` (`fid`, `name`, `path`, `address`) VALUES (NULL,'" + filename + "','" + filepath + "','" + clientAddress +"')");
+			results = query.executeUpdate("INSERT INTO `available_files` (`fid`, `name`, `path`, `address`, `size`) VALUES (NULL,'" + filename + "','" + filepath + "','" + clientAddress+ "','" + size +"')");
 			if(results==1){
 				res=true;
 				//ResultSet results = query.executeQuery("SELECT MAX(fid) FROM available_files");				
