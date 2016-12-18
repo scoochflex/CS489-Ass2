@@ -1,9 +1,20 @@
 module Assignment2{
 	module P2P{
+			struct fileInfo{
+				long fid;
+				string name;
+				string path;
+				string address;
+				long long size;
+			};
 		interface server{
+			typedef sequence<fileInfo> fileList;
 			boolean getFileLocation(in long fid, out string path, out string clientAddress);
-			void registerFile(in string filename, in string path, in string clientAddress);
-			boolean unRegisterFile(in long fid);		
+			void registerFile(in string filename, in string path, in string clientAddress, in long long size);
+			boolean unRegisterFile(in long fid);	
+			fileList getAllSharedFiles();
+			fileList searchFilesByName(in string filename);
+			fileList searchFilesByAddress(in string address); 	
 		};
 	};
 };
