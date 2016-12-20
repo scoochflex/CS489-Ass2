@@ -336,7 +336,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 					clientIn = new ObjectInputStream(clientSocket.getInputStream());
 					clientOut = new ObjectOutputStream(clientSocket.getOutputStream());
 					//While there is a session taking place with a client...
-					System.out.println("(UploadFileManger) "+"Session with client: " + clientSocket.getRemoteSocketAddress() + " starting...");
+					System.out.println("(UploadFileManger) "+"Session with client: " + " starting...");
 					while (session) {						
 						String message = "";
 						//Largest amount of data being sent at once is 10000 bytes (about 10 KB)
@@ -401,7 +401,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 					int numBytesRead=0;
 		    		while(numBytesRead!=-1){	
 			    		numBytesRead = fileReader.read(bytesToSend);
-		    			clientOut.write(bytesToSend);
+		    			clientOut.write(bytesToSend,0,numBytesRead);
 			    		clientOut.flush();
 		    		}
 		    		fileReader.close();
@@ -1005,7 +1005,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 					//Implement reading the LONG associated with the file size being send
 					if(fileFound){
 						totalBytesRead+=byteEst;
-						writeToFile.write(bytes);
+						writeToFile.write(bytes,0,byteEst);
 						writeToFile.flush();
 						if(totalBytesRead>=size){
 							writeToFile.close();
@@ -1062,9 +1062,8 @@ public class ClientInterface implements ActionListener, WindowListener {
 						System.out.println("(ClientInterface) Trying to redirect my connection to: " + destName + ":" + destPort);
 						Socket redirectConnection = new Socket(destName, destPort);
 						//re-init out in's and out's
-						clientIn = new ObjectInputStream(redirectConnection.getInputStream());
 						clientOut = new ObjectOutputStream(redirectConnection.getOutputStream());
-						
+						clientIn = new ObjectInputStream(redirectConnection.getInputStream());
 						//If we have connected to the correct socket after a redirect,
 						//we can spit out or download request complete with the path 
 						//of the desired file
