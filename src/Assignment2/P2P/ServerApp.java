@@ -40,8 +40,7 @@ class ServerImpl extends serverPOA{
 			clientAddress=new StringHolder(res.getKey());
 			clientAddress=new StringHolder(res.getValue());
 			return true;
-		}
-		
+		}		
 		return false;
 	}
 
@@ -146,7 +145,7 @@ public class ServerApp {
 	            System.out.println("Server: Associated the servant manager of " +
 	                               "type servant locator with \"" + 
 	                               poa1.the_name() + "\"");
-
+ 
 	            // This create_reference operation does not cause an activation, 
 	            // the resulting object reference will be exported and passed to 
 	            // client, so that subsequent requests on the reference will cause

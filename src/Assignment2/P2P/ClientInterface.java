@@ -21,12 +21,16 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.rmi.ConnectException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -64,6 +68,12 @@ public class ClientInterface implements ActionListener, WindowListener {
 	int height = 400;
 	//address of server instance to connect to
 	JTextField address;
+	//Lower bound of valid ports to serve files over..
+	JTextField fileServePortLower;
+	//Upper bound of valid ports to serve files over..
+	JTextField fileServePortUpper;
+	//Container for error message incase that the lower >upper or  ports were specified
+	JLabel fileServePortError;
 	//Error if the address is not filled in malformed etc...
 	JLabel errorMessage;
 	//Initial frame for the startup of the application
@@ -91,6 +101,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 		
 		public ClientThreadManager(String [] args){
 			initalArguements = args;
+			
 		}
 
 		@Override
@@ -116,7 +127,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 		}
 		
 		public fileInfo[] getMySharedFiles(){
-			return client.getAllSharedFiles(fileShareManager.serverAddress);
+			return client.getAllSharedFiles(fileShareManager.getServerAddress());
 		}
 		
 		public void removeFile(int fid){
@@ -133,16 +144,24 @@ public class ClientInterface implements ActionListener, WindowListener {
 	 */
 	public class FileShareManager implements Runnable{
 		ServerSocket clientRedirector;
-		String serverAddress;
-		boolean waitForClients = true;
+		int lower = -1;
+		int upper = -1;
+		String serverAddress = "";
+		boolean waitForClients = true;		
+		
+		public FileShareManager(int lower, int upper){
+			this.lower=lower;
+			this.upper=upper;
+		}
 		
 		@Override
 		public void run() {
-			// TODO Auto-generated method stub
 			try {
-				clientRedirector = new ServerSocket(0);
-				int port = clientRedirector.getLocalPort();
-				serverAddress = InetAddress.getLocalHost().getHostAddress() + ":" + port;
+				clientRedirector = new ServerSocket(lower);
+				lowerIncrement();
+				
+				getServerAddress();
+				
 				while(waitForClients){
 					//Timeout every 5 seconds (5000 ms). This ensures that the while condition is checked
 					//clientRedirector.setSoTimeout(5000);
@@ -150,18 +169,25 @@ public class ClientInterface implements ActionListener, WindowListener {
 					Socket clientToRedirect = clientRedirector.accept();
 					System.out.println("(FileShareManager) " + "I'm making an upload manager to handle this client:" + clientToRedirect.getRemoteSocketAddress());
 					//Someone wants a file! Spawn a thread to deal with that request
-					UploadFileManger uploadManager = this.new UploadFileManger();
-					Thread uploadManagerThread = new Thread(uploadManager);
-					uploadManagerThread.start();
-					System.out.println("(FileShareManager) " + "I'm waiting for upload manager to start up it's server socket...");
-					String address = "";
-					while(address==""){
-						address = uploadManager.getAddress();
-					}
-					System.out.println("(FileShareManager) " +"I'm done waiting! Sending redirect to client with address: " + address);
-					//Thread.sleep(3000);
-					sendRedirectMessage(clientToRedirect, address);
-					System.out.println("(FileShareManager) " +"Sent redirect to client with address: " + address);
+					int portOfThread = getPort();
+					//No free ports to deal with the client
+					if(portOfThread==-1){
+						//No free ports to spawn thread with
+						sendCloseMessage(clientToRedirect);
+					}else{
+						UploadFileManger uploadManager = this.new UploadFileManger(portOfThread);
+						Thread uploadManagerThread = new Thread(uploadManager);
+						uploadManagerThread.start();
+						System.out.println("(FileShareManager) " + "I'm waiting for upload manager to start up it's server socket...");
+						String addressToConnect = "";
+						while(addressToConnect==""){
+							addressToConnect = uploadManager.getAddress();
+						}
+						System.out.println("(FileShareManager) " +"I'm done waiting! Sending redirect to client with address: " + addressToConnect);
+						//Thread.sleep(3000);
+						sendRedirectMessage(clientToRedirect, addressToConnect);
+						System.out.println("(FileShareManager) " +"Sent redirect to client with address: " + addressToConnect);
+					}					
 				}
 			}catch(SocketTimeoutException e){
 				e.printStackTrace();
@@ -173,6 +199,28 @@ public class ClientInterface implements ActionListener, WindowListener {
 				e.printStackTrace();
 			}
 		}
+		
+		public synchronized void lowerIncrement(){
+			if(lower<upper){
+				lower++;
+			}
+		}
+		
+		public synchronized void lowerDecrement(){
+			if(lower>0){
+				lower--;
+			}
+		}
+		
+		public synchronized int getPort(){
+			int port=-1;
+			if(lower<=upper){
+				port = lower;
+				lowerIncrement();
+			}
+			return port;
+		}
+		
 		//If set to false it ends the thread after the next client connects
 		public synchronized void setWaitForClients(boolean wait){
 			this.waitForClients = wait;
@@ -197,6 +245,59 @@ public class ClientInterface implements ActionListener, WindowListener {
 			}
 		}
 		
+		public void sendCloseMessage(Socket clientToRedirect){
+			try{
+				BufferedOutputStream clientOut = new BufferedOutputStream(clientToRedirect.getOutputStream());
+				System.out.println("(FileShareManager) "+ "sending redirect with address:" + address);
+				byte [] messageToWrite = ("Close Connection").getBytes(StandardCharsets.UTF_16);
+				clientOut.write(messageToWrite);
+				clientOut.flush();
+			}catch(IOException e){
+				//Client looking for file has now disconnected, this is a good thing...
+				e.printStackTrace();
+			}
+			catch(Exception e){
+				e.printStackTrace();
+			}
+		}
+		/*
+		 * This function is used to get our public IP so that clients on other networks can talk with us
+		 * We expect that our public IP won't change for the duration of the client's life. After the client is closed,
+		 * all shared files are removed from the database to ensure that a client is always rechable.
+		 */
+		 public String getPublicAddress(){
+			String publicAddress = "";
+			try {
+				//Create url to amazon's free check ip service
+				URL amazonIpService = new URL("http://checkip.amazonaws.com");
+				BufferedReader in = new BufferedReader(new InputStreamReader(amazonIpService.openStream()));
+				//Output of readLine should be just our address...
+				publicAddress = in.readLine();
+				in.close();			    
+			} catch(Exception e){
+				//Could not determine public IP
+				e.printStackTrace();
+			}
+			return publicAddress;
+		}
+		 
+		 public synchronized String getServerAddress(){
+				int port = clientRedirector.getLocalPort();
+				String address = getPublicAddress();				
+				//In the event that it fails or that we are networked within a LAN not a WAN...
+				if(!address.isEmpty()){
+					serverAddress = address + ":" + port;
+				}else{
+					try {
+						serverAddress = InetAddress.getLocalHost().getHostAddress() + ":" + port;
+					} catch (UnknownHostException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				return serverAddress;
+		 }
+		
 		/* Each instance of this class will run until one file request is serviced by a redirected client
 		 * It is created and a new process is spawned to run a upload file manager for
 		 * every request that the client received so that the client can serve multiple requests at once
@@ -210,47 +311,15 @@ public class ClientInterface implements ActionListener, WindowListener {
 			BufferedOutputStream clientOut;
 			boolean session = true;
 			
-			public UploadFileManger() {
-			}			
-			
-			private void sendFileToClient(File fileToUpload) {
-				try{
-					byte [] bytesToSend = new byte[10000];
-					System.out.println("(UploadFileManger) "+"Requested filepath determined to be: " + fileToUpload.toString());
-		    	if(fileToUpload.canRead()){
-		    		//Can read so send file found message
-					byte [] messageToWrite = ("File found").getBytes(StandardCharsets.UTF_16);
-					clientOut.write(messageToWrite);
-					clientOut.flush();
-					Thread.sleep(500);
-					//Open file for reading
-		    		FileInputStream  fileReader = new FileInputStream (fileToUpload.toString());
-		    		//Read file into 
-					int numBytesRead=0;
-		    		while(numBytesRead!=-1){	
-			    		numBytesRead = fileReader.read(bytesToSend);
-		    			clientOut.write(bytesToSend);
-			    		clientOut.flush();
-		    		}
-		    		fileReader.close();
-		    	}else{
-    				System.out.println("Sending error response 405...");
-    				byte [] messageToWrite = ("File not found").getBytes(StandardCharsets.UTF_16);
-					clientOut.write(messageToWrite);
-					clientOut.flush();
-		    	}
-				}catch(Exception e){
-					e.printStackTrace();
-					this.session = false;
-				}
-			}
+			public UploadFileManger(int portNum) throws IOException {
+				//Create our server socket bound to a free port, or what the user has said should be a free port
+				clientConnection = new ServerSocket(portNum);
+			}	
 
 			@Override
 			public void run() {
 				try{
 					System.out.println("(UploadFileManger) reached run!");
-					//Create our server socket bound to a free port (providing 0 as an argument ensures this)
-					clientConnection = new ServerSocket(0);
 					//Get the port...
 					int port = clientConnection.getLocalPort();
 					//Create the address from the port...
@@ -304,10 +373,55 @@ public class ClientInterface implements ActionListener, WindowListener {
 							}
 						}
 					}
+					endConnection();
 				}catch(Exception e){
 					e.printStackTrace();
 					this.session = false;
+					endConnection();
 				}				
+			}
+			
+			private void sendFileToClient(File fileToUpload) {
+				try{
+					byte [] bytesToSend = new byte[10000];
+					System.out.println("(UploadFileManger) "+"Requested filepath determined to be: " + fileToUpload.toString());
+		    	if(fileToUpload.canRead()){
+		    		//Can read so send file found message
+					byte [] messageToWrite = ("File found").getBytes(StandardCharsets.UTF_16);
+					clientOut.write(messageToWrite);
+					clientOut.flush();
+					Thread.sleep(500);
+					//Open file for reading
+		    		FileInputStream  fileReader = new FileInputStream (fileToUpload.toString());
+		    		//Read file into 
+					int numBytesRead=0;
+		    		while(numBytesRead!=-1){	
+			    		numBytesRead = fileReader.read(bytesToSend);
+		    			clientOut.write(bytesToSend);
+			    		clientOut.flush();
+		    		}
+		    		fileReader.close();
+		    	}else{
+    				System.out.println("Sending error response 405...");
+    				byte [] messageToWrite = ("File not found").getBytes(StandardCharsets.UTF_16);
+					clientOut.write(messageToWrite);
+					clientOut.flush();
+		    	}
+				}catch(Exception e){
+					e.printStackTrace();
+					this.session = false;
+				}
+			}
+			
+			public synchronized void endConnection(){
+				try {
+					this.clientConnection.close();
+					//Free our port in the range of ports provided
+					fileShareManager.lowerDecrement();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				
 			}
 			
 			public synchronized String getAddress(){
@@ -364,6 +478,40 @@ public class ClientInterface implements ActionListener, WindowListener {
 		//Add it with the constraints associated with it
 		pane.add(address,cons);
 		
+		JLabel lowerLabel = new JLabel("Fill out a lower bound for allowed port values");
+		
+		cons.gridy=2;
+		//Add it with the constraints associated with it
+		pane.add(lowerLabel,cons);
+		
+		//Add address entry field
+		fileServePortLower = new JTextField();
+		fileServePortLower.setPreferredSize(new Dimension(200, 25));
+		//Set it's y position in the gridbag
+		cons.gridy=3;
+		//Add it with the constraints associated with it
+		pane.add(fileServePortLower,cons);
+		
+		JLabel upperLabel = new JLabel("Fill out a upper bound for allowed port values");
+		cons.gridy=4;
+		//Add it with the constraints associated with it
+		pane.add(upperLabel,cons);
+		
+		//Add address entry field
+		fileServePortUpper = new JTextField();
+		fileServePortUpper.setPreferredSize(new Dimension(200, 25));
+		//Set it's y position in the gridbag
+		cons.gridy=5;
+		//Add it with the constraints associated with it
+		pane.add(fileServePortUpper,cons);
+		
+		fileServePortError = new JLabel("Fill out a lower and upper bond for allowed port values");
+		fileServePortError.setPreferredSize(new Dimension(400, 25));
+		cons.gridy=6;
+		//Add it with the constraints associated with it
+		pane.add(fileServePortError,cons);
+		
+		
 		//Start button that initiates client connection to server ORB based on value in address
 		JButton start = new JButton("Start Client");
 		start.setVerticalTextPosition(AbstractButton.BOTTOM);
@@ -371,14 +519,14 @@ public class ClientInterface implements ActionListener, WindowListener {
 		start.addActionListener(this);
 		start.setActionCommand("start");
 		//Set it's y position in the gridbag
-		cons.gridy=2;
+		cons.gridy=7;
 		//Add it with the constraints associated with it
 		pane.add(start, cons);
 		
 		//Basic labal for displaying error messages asociated with client startup
 		errorMessage = new JLabel();
 		//Set it's y position in the gridbag
-		cons.gridy=3;
+		cons.gridy=8;
 		//Add it with the constraints associated with it
 		pane.add(errorMessage, cons);
 		
@@ -390,8 +538,11 @@ public class ClientInterface implements ActionListener, WindowListener {
 	 * This function adds the components required to create the connect pane
 	 * it returns nothing and is called in main. It needs to be called after initFrame
 	 * It is called in ClientInterface's main method
+	 * Gridbaglayout was not used here. Instead I used the BoxLayout layout system
+	 * Tabbed sections incicate that they are added to the panel defined above
 	 */
 	public void drawSessionPane(){
+		//Set new size because there's more stuff on this pane
 		frame.setSize(600, 700);
 		//SharePanel start
 		JPanel sharePanel = new JPanel();
@@ -643,22 +794,59 @@ public class ClientInterface implements ActionListener, WindowListener {
 		}
 	}
 
+	/*
+	 * This is just a general action performed handler for all of the buttons used in the GUI
+	 * It starts up the client with the appropriate user data provided from the connect pane
+	 * It also deals with downloading files requested by the user
+	 */
 	public void actionPerformed(ActionEvent action) {
 		if ("start".equals(action.getActionCommand())) {
+			int lower=0,upper=0;
+			boolean validPorts=true;
 			if(!(address.getText().isEmpty())){
 				String[] args = {"-ORBInitialPort", "1050" ,"-ORBInitialHost",address.getText()};
 				try{
-					clientManager = this.new ClientThreadManager(args);
-					Thread clientManagerThread = new Thread(clientManager);
-					clientManagerThread.run();
-					fileShareManager = this.new FileShareManager();
-					Thread fileShareManagerThread = new Thread(fileShareManager );
-					fileShareManagerThread.start();
-					errorMessage.setText("Connected OK!");
-					frame.getContentPane().removeAll();
-					frame.getContentPane().revalidate();
-					frame.getContentPane().repaint();
-					drawSessionPane();
+					if((!fileServePortLower.getText().isEmpty()) &&  (!fileServePortUpper.getText().isEmpty())){
+						System.out.println("Got here.........");
+						fileServePortError.setText("Please fill out both feilds...");
+						try{
+							lower = Integer.parseInt(fileServePortLower.getText());
+							upper = Integer.parseInt(fileServePortUpper.getText());
+							if(upper<0 || upper>65535 || lower<0 || lower>65535){
+								fileServePortError.setText("Please ensure both feilds contain valid integers ranging from 0-65535");
+								validPorts=false;						
+								}
+							if((upper-lower)<=1){
+								fileServePortError.setText("Please ensure to allocate at least two ports");
+								validPorts=false;						
+								}							
+						}catch (Exception e){
+							fileServePortError.setText("Please ensure both feilds contain valid integers ranging from 0-65535");
+							validPorts=false;
+						}
+					}else{
+						fileServePortError.setText("Please fill out both feilds...");
+						validPorts=false;
+					}
+					
+					if(validPorts){					
+						clientManager = this.new ClientThreadManager(args);
+						Thread clientManagerThread = new Thread(clientManager);
+						clientManagerThread.run();
+						
+						fileShareManager = this.new FileShareManager(lower, upper);	
+						Thread fileShareManagerThread = new Thread(fileShareManager );
+						fileShareManagerThread.start();
+						
+						errorMessage.setText("Connected OK!");
+						
+						frame.getContentPane().removeAll();
+						frame.getContentPane().revalidate();
+						frame.getContentPane().repaint();
+						
+						drawSessionPane();
+					}
+					
 				}catch(Exception e){
 					errorMessage.setText("Could not connect to server. Ensure that the server is running on the specified hostname or port and try again");
 					e.printStackTrace();
@@ -838,7 +1026,8 @@ public class ClientInterface implements ActionListener, WindowListener {
 				if(!message.isEmpty() && !fileFound){
 					System.out.println("(ClientInterface) I got a message: " + message);
 					
-					if(message.equalsIgnoreCase("Close Connection")){
+					if(message.equalsIgnoreCase("Close Connection")){					
+						downloadStatus.setText("Client has no free ports to connect to... Please try again later");
 						session=false;
 						break;
 					}
@@ -886,7 +1075,11 @@ public class ClientInterface implements ActionListener, WindowListener {
 			clientOut.write(messageToWrite);
 			clientOut.flush();
 			serverConnection.close();
-		}catch(Exception e){
+		}catch(ConnectException e){
+			e.printStackTrace();
+			downloadStatus.setText("Could not to connect to peer");
+		}
+		catch(Exception e){
 			e.printStackTrace();
 		}
 	}
