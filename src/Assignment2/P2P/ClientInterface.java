@@ -22,6 +22,8 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -307,8 +309,8 @@ public class ClientInterface implements ActionListener, WindowListener {
 			ServerSocket clientConnection;
 			String serverAddress = "";
 			Socket clientSocket;
-			BufferedInputStream clientIn;
-			BufferedOutputStream clientOut;
+			ObjectInputStream clientIn;
+			ObjectOutputStream clientOut;
 			boolean session = true;
 			
 			public UploadFileManger(int portNum) throws IOException {
@@ -329,8 +331,8 @@ public class ClientInterface implements ActionListener, WindowListener {
 					System.out.println("(UploadFileManger) "+"Waiting for client to reconnect...");
 					clientSocket = clientConnection.accept();
 					System.out.println("(UploadFileManger) "+"Client reconnected!");
-					clientIn = new BufferedInputStream(clientSocket.getInputStream());
-					clientOut = new BufferedOutputStream(clientSocket.getOutputStream());
+					clientIn = new ObjectInputStream(clientSocket.getInputStream());
+					clientOut = new ObjectOutputStream(clientSocket.getOutputStream());
 					//While there is a session taking place with a client...
 					System.out.println("(UploadFileManger) "+"Session with client: " + clientSocket.getRemoteSocketAddress() + " starting...");
 					while (session) {						
@@ -974,8 +976,8 @@ public class ClientInterface implements ActionListener, WindowListener {
 			System.out.println("(ClientInterface) Trying to connect to: " + destName + ":" + destPort);
 			Socket serverConnection = new Socket(destName, destPort);
 			//Create our inital buffered ins and outs
-			BufferedInputStream clientIn = new BufferedInputStream(serverConnection.getInputStream());
-			BufferedOutputStream clientOut = new BufferedOutputStream(serverConnection.getOutputStream());
+			ObjectInputStream clientIn = new ObjectInputStream(serverConnection.getInputStream());
+			ObjectOutputStream clientOut = new ObjectOutputStream(serverConnection.getOutputStream());
 			System.out.println("(ClientInterface) Connected to: " + destName + ":" + destPort);
 			//While there is a session taking place with a client...
 			File toDownload = new File(downloadDir + "\\" +name);
@@ -1058,8 +1060,8 @@ public class ClientInterface implements ActionListener, WindowListener {
 						System.out.println("(ClientInterface) Trying to redirect my connection to: " + destName + ":" + destPort);
 						Socket redirectConnection = new Socket(destName, destPort);
 						//re-init out in's and out's
-						clientIn = new BufferedInputStream(redirectConnection.getInputStream());
-						clientOut = new BufferedOutputStream(redirectConnection.getOutputStream());
+						clientIn = new ObjectInputStream(redirectConnection.getInputStream());
+						clientOut = new ObjectOutputStream(redirectConnection.getOutputStream());
 						
 						//If we have connected to the correct socket after a redirect,
 						//we can spit out or download request complete with the path 
