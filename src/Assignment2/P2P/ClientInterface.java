@@ -232,7 +232,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 		
 		public void sendRedirectMessage(Socket clientToRedirect, String address){
 			try{
-				BufferedOutputStream clientOut = new BufferedOutputStream(clientToRedirect.getOutputStream());
+				ObjectOutputStream clientOut = new ObjectOutputStream(clientToRedirect.getOutputStream());
 				System.out.println("(FileShareManager) "+ "sending redirect with address:" + address);
 				//Current issue: client received message, but has formatting issues. Output on reciever's end:
 				//I got a message: <Can't paste but looks like: SQUARE C SQUARE o SQUARE n SQUARE n SQUARE ...................>
@@ -251,7 +251,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 		
 		public void sendCloseMessage(Socket clientToRedirect){
 			try{
-				BufferedOutputStream clientOut = new BufferedOutputStream(clientToRedirect.getOutputStream());
+				ObjectOutputStream clientOut = new ObjectOutputStream(clientToRedirect.getOutputStream());
 				System.out.println("(FileShareManager) "+ "sending redirect with address:" + address);
 				byte [] messageToWrite = ("Close Connection").getBytes(StandardCharsets.UTF_16);
 				clientOut.write(messageToWrite);
