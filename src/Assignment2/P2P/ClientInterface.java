@@ -183,7 +183,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 						System.out.println("(FileShareManager) " + "I'm waiting for upload manager to start up it's server socket...");
 						String addressToConnect = "";
 						while(addressToConnect==""){
-							addressToConnect = uploadManager.getAddress();
+							addressToConnect = serverAddress.split(":")[0] + ":" +addressToConnect.split(":")[1];
 						}
 						System.out.println("(FileShareManager) " +"I'm done waiting! Sending redirect to client with address: " + addressToConnect);
 						//Thread.sleep(3000);
