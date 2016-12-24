@@ -398,11 +398,11 @@ public class ClientInterface implements ActionListener, WindowListener {
 					//Open file for reading
 		    		FileInputStream  fileReader = new FileInputStream (fileToUpload.toString());
 		    		//Read file into 
-					int numBytesRead=0;
-		    		while(numBytesRead!=-1){	
-			    		numBytesRead = fileReader.read(bytesToSend);
+					int numBytesRead = fileReader.read(bytesToSend);
+		    		while(numBytesRead!=-1){			    		
 		    			clientOut.write(bytesToSend,0,numBytesRead);
 			    		clientOut.flush();
+			    		numBytesRead = fileReader.read(bytesToSend);
 		    		}
 		    		fileReader.close();
 		    	}else{
@@ -804,24 +804,53 @@ public class ClientInterface implements ActionListener, WindowListener {
 	 * It also deals with downloading files requested by the user
 	 */
 	public void actionPerformed(ActionEvent action) {
+		//When the user hits the start button on the startup panel
 		if ("start".equals(action.getActionCommand())) {
-			int lower=0,upper=0;
-			boolean validPorts=true;
+			//Address must be set before we check for other errors...
 			if(!(address.getText().isEmpty())){
-				String[] args = {"-ORBInitialPort", "1050" ,"-ORBInitialHost",address.getText()};
+				//Lower and upper port values
+				int lower=0,upper=0;
+				//Indicates that the upper and lower port were entered correctly
+				boolean validPorts=true;
+				//Address validation
+				String hostAddress = address.getText();
+				int defPort=1050;
+				int port=defPort;
+				String [] parts = hostAddress.split(":");
+				//Only one : can be present followed by a valid port number
+				if(parts.length==2){					
+					hostAddress = parts[0];
+					try{
+						port = Integer.parseInt(parts[1]);
+						//If an invalid port number was entered, we simplt use the default but alert the user first.
+						if(port<0 || port >65535){
+							port=defPort;
+							System.out.println("An invalid port number was entered, it must be an integer value ranging from 0-65535");
+							validPorts=false;
+						}
+					}catch(NumberFormatException e){
+						port=defPort;
+						errorMessage.setText("Port could not be determined from host string, it must be an integer value ranging from 0-65535");
+						System.out.println("An invalid port number was entered, it must be an integer value ranging from 0-65535");
+						validPorts=false;
+					}
+				}else if(parts.length>2){
+					errorMessage.setText("Invalid address entered. Can only contain at most one ';'");
+				}
+				//Attempt to parse lower and upper port values now...
 				try{
 					if((!fileServePortLower.getText().isEmpty()) &&  (!fileServePortUpper.getText().isEmpty())){
-						System.out.println("Got here.........");
-						fileServePortError.setText("Please fill out both feilds...");
 						try{
 							lower = Integer.parseInt(fileServePortLower.getText());
 							upper = Integer.parseInt(fileServePortUpper.getText());
+							//invalid range or port
 							if(upper<0 || upper>65535 || lower<0 || lower>65535){
 								fileServePortError.setText("Please ensure both feilds contain valid integers ranging from 0-65535");
 								validPorts=false;						
 								}
+							//we require at least 2 free ports
 							if((upper-lower)<=1){
-								fileServePortError.setText("Please ensure to allocate at least two ports");
+								fileServePortError.setText("Please ensure to allocate at least two ports.");
 								validPorts=false;						
 								}							
 						}catch (Exception e){
@@ -833,7 +862,8 @@ public class ClientInterface implements ActionListener, WindowListener {
 						validPorts=false;
 					}
 					
-					if(validPorts){					
+					if(validPorts){
+						String[] args = {"-ORBInitialPort", String.valueOf(port) ,"-ORBInitialHost",hostAddress};
 						clientManager = this.new ClientThreadManager(args);
 						Thread clientManagerThread = new Thread(clientManager);
 						clientManagerThread.run();
@@ -958,7 +988,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 	}
 	
 	/**
-	 * 
+	 * The download file method is called when the user presess the download button after selecting a file
 	 * @param path the path of the desired file on the remote machine
 	 * @param name the name of the desired file
 	 * @param address the address of the remote machine
@@ -988,14 +1018,15 @@ public class ClientInterface implements ActionListener, WindowListener {
 			ObjectInputStream clientIn = new ObjectInputStream(serverConnection.getInputStream());
 			ObjectOutputStream clientOut = new ObjectOutputStream(serverConnection.getOutputStream());
 			System.out.println("(ClientInterface) Connected to: " + destName + ":" + destPort);
+			downloadStatus.setText("(ClientInterface) Connected to: " + destName + ":" + destPort);
+			downloadStatus.repaint();
 			//While there is a session taking place with a client...
 			File toDownload = new File(downloadDir + "\\" +name);
 			//Determine if we were able to create a spot on the client's filesystem for the desired file
 			boolean fileCreated = false;
 			//Create a file to store the desired download
-			System.out.println("(ClientInterface) Trying to create a file: " + downloadDir + "\\" + name);
+			System.out.println("(ClientInterface) Creating a file: " + downloadDir + "\\" + name);
 			fileCreated = toDownload.createNewFile();
-			System.out.println("(ClientInterface) Created a file.");
 
 			FileOutputStream  writeToFile = new FileOutputStream (toDownload.getAbsolutePath());
 			
@@ -1006,7 +1037,6 @@ public class ClientInterface implements ActionListener, WindowListener {
 				// Listen for input from client, we are just waiting for the path to the file we are supposed to send...
 				//Read the size of the incoming message, we cap it at 10000 bytes (about 10KB)
 				int byteEst = clientIn.read(bytes);
-				System.out.println("(ClientInterface) Bytes read: " + byteEst);
 				while (byteEst != -1) {
 					if(fileFound){
 						totalBytesRead+=byteEst;
@@ -1015,11 +1045,12 @@ public class ClientInterface implements ActionListener, WindowListener {
 						if(totalBytesRead>=size){
 							writeToFile.close();
 							downloadStatus.setText("Download complete! File is in downloads folder!");
+							downloadStatus.repaint();
 							session = false;
 							break;
 						}else{
-							System.out.println("Downloaded " + totalBytesRead + "B/" + size + "B");
-							//downloadStatus.setText("Downloaded " + totalBytesRead + "B/" + size + "B");
+							downloadStatus.setText("Downloaded " + totalBytesRead + "B/" + size + "B");
+							downloadStatus.repaint();
 							byteEst = clientIn.read(bytes);
 						}
 					}else{
@@ -1082,6 +1113,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 		}catch(ConnectException e){
 			e.printStackTrace();
 			downloadStatus.setText("Could not to connect to peer");
+			downloadStatus.repaint();
 		}
 		catch(Exception e){
 			e.printStackTrace();
@@ -1092,30 +1124,7 @@ public class ClientInterface implements ActionListener, WindowListener {
 		ClientInterface iface  = new ClientInterface();
 		iface.initFrame();
 		iface.drawConnectPane();
-	}
-			/*
-			 * try{ //get a connection to the database... //query for the ior file
-			 * for an available servant... //Create orb based around the ior thats
-			 * been retrieved from the dbase... // create and initialize the ORB ORB
-			 * orb = ORB.init(args, null);
-			 * 
-			 * // get the root naming context org.omg.CORBA.Object objRef =
-			 * orb.resolve_initial_references("NameService"); // Use
-			 * NamingContextExt instead of NamingContext. This is // part of the
-			 * Interoperable naming Service. NamingContextExt ncRef =
-			 * NamingContextExtHelper.narrow(objRef);
-			 * 
-			 * helloImpl = serverHelper.narrow(ncRef.resolve_str("Hello"));
-			 * 
-			 * helloImpl.registerFile("tmp.txt", "/path/to/tmp", "127.0.0.1:80");
-			 * 
-			 * System.out.println("Obtained a handle on server object: " +
-			 * helloImpl);
-			 * 
-			 * 
-			 * } catch (Exception e) { System.out.println("ERROR : " + e) ;
-			 * e.printStackTrace(System.out); }
-			 */
+	}			
 
 	@Override
 	public void windowActivated(WindowEvent arg0) {

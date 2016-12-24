@@ -86,38 +86,58 @@ class ServerImpl extends serverPOA{
 	
 }
 
+/*
+ * NOTE: Tutorial at: https://docs.oracle.com/javase/8/docs/technotes/guides/idl/servantlocators.html#hello.idl
+ * helped me to determine how to implement this style of concurrency for incoming
+ * requests. Similarities should be noted. Perhaps this can be provided as a resource for future students?
+ * This class is used in the main method as a way of creating a servant for every
+ * request for a method call that comes in. It has pre and post invoke methods 
+ * It is added as a servant locator in main when calling set_servant_manager
+ * 
+ */
 class PoaServantLocator extends LocalObject implements ServantLocator {
-    public Servant preinvoke(byte[] oid, POA adapter,
-                             String operation,
-                             CookieHolder the_cookie) throws ForwardRequest {
+	/*
+	 * preinvoke implimentation. these arguements were filled in by java.
+	 * The oid is the ID of the invoking corba agent, the adapter is the POA that 
+	 * was used to invoke this servant locators method
+	 * We print out the reference we create as well as the name of the requsting POA
+	 * We then return the servant reference to the invoker
+	 */
+    public Servant preinvoke(byte[] oid, POA adapter, String operation,CookieHolder the_cookie) throws ForwardRequest {
         try {
-        	ServerImpl servantObj = new ServerImpl();
-            System.out.println("PoaServantLocator.preinvoke(): Created \"" +
-                               servantObj.getClass().getName() + "\" " +
-                               "servant object for \"" + adapter.the_name() +
-                               "\"");
-            return servantObj;
+        	ServerImpl servantRef = new ServerImpl();
+            System.out.println("We created a servant: " + servantRef.toString() + " for a request from " + adapter.the_name());
+            return servantRef;
         } catch (Exception e) {
-            System.err.println("preinvoke: Caught exception - " + e);
+            System.err.println("(PoaServantLocator) Exception encountered...");
+            e.printStackTrace();
         }
         return null;
     }
-
+    /*
+	 * preinvoke implimentation. these arguements were filled in by java.
+	 * The oid is the ID of the invoking corba agent, the adapter is the POA that 
+	 * was used to invoke this servant locators method
+	 * We print out the reference we create as well as the name of the requsting POA
+	 * We then return the servant reference to the invoker
+	 */
     public void postinvoke(byte[] oid, POA adapter,
                            String operation,
                            java.lang.Object the_cookie,
                            Servant the_servant) {
         try {
-            System.out.println("PoaServantLocator.postinvoke(): For \"" +
-                               adapter.the_name() + "\" adapter of servant " +
-                               "object type \"" +
-                               the_servant.getClass().getName() + "\"");
+            System.out.println("We used a servant: " + the_servant.toString() + " for a request from " + adapter.the_name());
+
         } catch (Exception e) {
-            System.err.println("postinvoke: Caught exception - " + e);
+            System.err.println("(PoaServantLocator) Exception encountered...");
         }
     }
 }
 
+/*
+ * This is our ServerApp class which contains all of the initialization parameters and activates
+ * all of your CORBA orbs and POA and sets policies.
+ */
 public class ServerApp {
 	  public static void main(String args[]) {
 		    try{
@@ -155,34 +175,31 @@ public class ServerApp {
 	            // the resulting object reference will be exported and passed to 
 	            // client, so that subsequent requests on the reference will cause
 	            // the appropriate servant manager to be invoked
-	            org.omg.CORBA.Object objectRef = serverPOA.create_reference(
+	            org.omg.CORBA.Object ref = serverPOA.create_reference(
 	                serverHelper.id());
-	            System.out.println("Server: Created a CORBA object reference " +
-	                               "from id \"" + serverHelper.id() + "\""); 
+	            System.out.println("(Server App) Created a reference: " + serverHelper.id()); 
 
 	            NamingContext rootContext = NamingContextHelper.narrow(
 	                orb.resolve_initial_references("NameService"));
 	            NameComponent name[] = {new NameComponent("Server", "")};
-	            rootContext.rebind(name, objectRef);
-	            System.out.println("Server: Exported the CORBA object reference " +
-	                               "to NameService");
+	            rootContext.rebind(name, ref);
+	            System.out.println("(Server App) Bound the created reference to the name component Server");
 
-	            System.out.println("Server: Ready and waiting for requests ...");
+	            System.out.println("(Server App) Ready and waiting fot incoming requests...");
 	            orb.run();
-		    }
-		        
-		      catch (Exception e) {
-		        e.printStackTrace();
-		      }
-		          
-		      System.out.println("Server Terminating ...");
+		    }		        
+	      catch (Exception e) {
+	        e.printStackTrace();
+	      }
+		    //Not sure when we would get here, provided exit message regardless
+		    System.out.println("(Server App) Shutting down");
 		  }
 }
 
 /*
- * 
  * This class is used to maintain a connection with the database as well
- *  as genetate the required statements and return the results as the expected data type
+ * as generate the required statements and return the results as the expected data type
+ * It contains only one connection to the database and it uses that for all requests
  */
 class DBConnectionManager {
     Connection dbConnection;    // The connection to the database
@@ -235,7 +252,7 @@ class DBConnectionManager {
 		boolean rowFound = false;
     	try {
     		query = dbConnection.createStatement();
-			results = query.executeQuery("SELECT * from `available_files` WHERE `name`='" + filename + "'");
+			results = query.executeQuery("SELECT * from `available_files` WHERE `name` LIKE '" + filename + "'");
 			rowFound = results.next();	    	
 	    	while(rowFound){
 	    		tmpArray.add(new fileInfo(results.getInt(1),results.getString(2),results.getString(3),results.getString(4), results.getLong(5)));
