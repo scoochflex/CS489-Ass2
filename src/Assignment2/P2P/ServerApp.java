@@ -124,33 +124,38 @@ public class ServerApp {
 		      // create and initialize the ORB
 		      ORB orb = ORB.init(args, System.getProperties());
 
-		      // get reference to rootpoa & activate the POAManager
+		      //Obtain a reference to the root POA via the helper class an the narrow function
 		      POA rootPoa = POAHelper.narrow(orb.resolve_initial_references("RootPOA"));
+		      //Activete out root POA when we have a reference
 		      rootPoa.the_POAManager().activate();
+		      System.out.println("(ServerApp) Instantiated and activated the root POA (created from the rootPOA): " + rootPoa.the_name());
 
+
+		      //Here we define our POA policies
 		      Policy poaPolicy[] = new Policy[2];
+		      	//This policy states that servants will not be retained by the POA
 	            poaPolicy[0] = rootPoa.create_servant_retention_policy(
 	                ServantRetentionPolicyValue.NON_RETAIN);
+	            //This policy states that the servant manager (in this case a servant locator) 
+	            //will be used when a reference for an object can't be found OR of the above policy is set (non-retain)
 	            poaPolicy[1] = rootPoa.create_request_processing_policy(
 	                RequestProcessingPolicyValue.USE_SERVANT_MANAGER);
-	            System.out.println("Server: Set POA policy as NON_RETAIN and " +
-	                               "USE_SERVANT_MANAGER");
+	            System.out.println("(Server App) Set policy as NON_RETAIN and USE_SERVANT_MANAGER");
 
-	            POA poa1 = rootPoa.create_POA("HelloPoa", null, poaPolicy);
-	            poa1.the_POAManager().activate();
-	            System.out.println("Server: Created and activated child POA " +
-	                               "\"" + poa1.the_name() + "\"");
+	            //Create out POA based off out policies and the rootPOA
+	            POA serverPOA = rootPoa.create_POA("HelloPoa", null, poaPolicy);
+	            serverPOA.the_POAManager().activate();
+	            System.out.println("(ServerApp) Instantiated and activated the POA (created from the rootPOA): " + serverPOA.the_name());
 
-	            poa1.set_servant_manager(new PoaServantLocator());
-	            System.out.println("Server: Associated the servant manager of " +
-	                               "type servant locator with \"" + 
-	                               poa1.the_name() + "\"");
+	            //Set our
+	            serverPOA.set_servant_manager(new PoaServantLocator());
+	            System.out.println("(Server App) The servant manger was set to be the POA locator");
  
 	            // This create_reference operation does not cause an activation, 
 	            // the resulting object reference will be exported and passed to 
 	            // client, so that subsequent requests on the reference will cause
 	            // the appropriate servant manager to be invoked
-	            org.omg.CORBA.Object objectRef = poa1.create_reference(
+	            org.omg.CORBA.Object objectRef = serverPOA.create_reference(
 	                serverHelper.id());
 	            System.out.println("Server: Created a CORBA object reference " +
 	                               "from id \"" + serverHelper.id() + "\""); 
@@ -164,44 +169,21 @@ public class ServerApp {
 
 	            System.out.println("Server: Ready and waiting for requests ...");
 	            orb.run();
-	          /*  
-		      // create servant and register it with the ORB
-		      ServerImpl helloImpl = new ServerImpl();
-		      helloImpl.setORB(orb); 
-
-		      // get object reference from the servant
-		      org.omg.CORBA.Object ref = rootpoa.servant_to_reference(helloImpl);
-		      server href = serverHelper.narrow(ref);
-		          
-		      // get the root naming context
-		      // NameService invokes the name service
-		      org.omg.CORBA.Object objRef =
-		          orb.resolve_initial_references("NameService");
-		      // Use NamingContextExt which is part of the Interoperable
-		      // Naming Service (INS) specification.
-		      NamingContextExt ncRef = NamingContextExtHelper.narrow(objRef);
-
-		      // bind the Object Reference in Naming
-		      String name = "server";
-		      NameComponent path[] = ncRef.to_name( name );
-		      ncRef.rebind(path, href);
-
-		      System.out.println("HelloServer ready and waiting ...");
-
-		      // wait for invocations from clients
-		      orb.run();
-		      */
-		    } 
+		    }
 		        
 		      catch (Exception e) {
-		        System.err.println("ERROR: " + e);
-		        e.printStackTrace(System.out);
+		        e.printStackTrace();
 		      }
 		          
-		      System.out.println("HelloServer Exiting ...");		        
+		      System.out.println("Server Terminating ...");
 		  }
 }
 
+/*
+ * 
+ * This class is used to maintain a connection with the database as well
+ *  as genetate the required statements and return the results as the expected data type
+ */
 class DBConnectionManager {
     Connection dbConnection;    // The connection to the database
 

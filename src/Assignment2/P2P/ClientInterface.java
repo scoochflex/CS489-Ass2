@@ -957,6 +957,13 @@ public class ClientInterface implements ActionListener, WindowListener {
 		}
 	}
 	
+	/**
+	 * 
+	 * @param path the path of the desired file on the remote machine
+	 * @param name the name of the desired file
+	 * @param address the address of the remote machine
+	 * @param size the size of the file to be downloaded
+	 */
 	public void downloadFile(String path, String name,String address, long size){
 		try{
 			//To determine if a session should end, either file found and downloaded, or not found...
@@ -1001,8 +1008,6 @@ public class ClientInterface implements ActionListener, WindowListener {
 				int byteEst = clientIn.read(bytes);
 				System.out.println("(ClientInterface) Bytes read: " + byteEst);
 				while (byteEst != -1) {
-					//CONTINUE
-					//Implement reading the LONG associated with the file size being send
 					if(fileFound){
 						totalBytesRead+=byteEst;
 						writeToFile.write(bytes,0,byteEst);
@@ -1018,10 +1023,6 @@ public class ClientInterface implements ActionListener, WindowListener {
 							byteEst = clientIn.read(bytes);
 						}
 					}else{
-						//for(int i =0; i<bytes.length;i++){
-						//	String first_char = String.valueOf((char) bytes[i]);
-						//	message += first_char;
-						//}
 						message+= (new String(bytes, StandardCharsets.UTF_16)).trim();
 						byteEst=-1;
 					}					
