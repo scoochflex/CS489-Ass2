@@ -87,9 +87,6 @@ class ServerImpl extends serverPOA{
 }
 
 /*
- * NOTE: Tutorial at: https://docs.oracle.com/javase/8/docs/technotes/guides/idl/servantlocators.html#hello.idl
- * helped me to determine how to implement this style of concurrency for incoming
- * requests. Similarities should be noted. Perhaps this can be provided as a resource for future students?
  * This class is used in the main method as a way of creating a servant for every
  * request for a method call that comes in. It has pre and post invoke methods 
  * It is added as a servant locator in main when calling set_servant_manager
@@ -208,9 +205,9 @@ class DBConnectionManager {
     	// Make the database connection
     	try {
     		// Construct the database address
-        	String dbaseURL = "jdbc:mysql://localhost:3306/files";
+        	String dbaseURL = "jdbc:mysql://54.213.30.113/files";
         	//Class.forName("com.mysql.jdbc.Driver").newInstance();
-        	this.dbConnection =DriverManager.getConnection(dbaseURL, "root", "");
+        	this.dbConnection =DriverManager.getConnection(dbaseURL, "phpClient", "monkies");
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -330,6 +327,8 @@ class DBConnectionManager {
     	return res;
     }
     
+    //Used to unregister a file based off an fid
+    //Files from each client are all unregistered upon the closing of the client's window
 	public boolean unRegisterFile(int fid) {
     Statement query;
 	int results;
